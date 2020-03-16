@@ -16,6 +16,7 @@ This command searches for docker images referenced in a chart.
 var version = "SNAPSHOT"
 
 func newImageCmd(args []string) *cobra.Command {
+	p := &imageCmd{}
 	return nil
 }
 
