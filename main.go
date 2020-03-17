@@ -17,7 +17,17 @@ var version = "SNAPSHOT"
 
 func newImageCmd(args []string) *cobra.Command {
 	p := &imageCmd{}
+	cmd := &cobra.Command{
+		Use:   "helm image [CHART]",
+		Short: "searches for docker images referenced in a chart",
+		Long:  globalUsage,
+		Run:   runImageCmd,
+	}
 	return nil
+}
+
+func runImageCmd(cmd *cobra.Command, args []string) {
+
 }
 
 func main() {
