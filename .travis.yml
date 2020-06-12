@@ -1,7 +1,7 @@
 language: go
 
 go:
-- 1.13.x
+- 1.14.x
 
 go_import_path: github.com/gemalto/helm-image
 
@@ -13,7 +13,7 @@ script:
 deploy:
 - provider: releases
   api_key: ${GITHUB_TOKEN}
-  file: _dist/helm-spray*
+  file: _dist/helm-image*
   skip_cleanup: true
   file_glob: true
   on:
