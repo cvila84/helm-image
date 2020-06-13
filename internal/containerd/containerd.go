@@ -1,6 +1,7 @@
 package containerd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/containerd/containerd"
@@ -472,7 +473,7 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 		return err
 	}
 	defer f.Close()
-	err = client.Export(ctx, f, exportOpts...)
+	err = client.Export(ctx, bufio.NewWriter(f), exportOpts...)
 	if err != nil {
 		return err
 	}
@@ -498,7 +499,11 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 //}
 
 func Client(debug bool) (*containerd.Client, error) {
-	clientLogFile, err := os.OpenFile("container.log", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	clientLogFile, err := os.OpenFile(filepath.Join(homeDir, ".containerd", "client.log"), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +529,12 @@ func Client(debug bool) (*containerd.Client, error) {
 }
 
 func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan bool, debug bool) {
-	serverLogFile, err := os.OpenFile("containerd.log", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("Error: cannot create containerd.log file: %s\n", err)
+		serverStarted <- false
+	}
+	serverLogFile, err := os.OpenFile(filepath.Join(homeDir, ".containerd", "containerd.log"), os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("Error: cannot create containerd.log file: %s\n", err)
 		serverStarted <- false
@@ -532,11 +542,6 @@ func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan boo
 	defer serverLogFile.Close()
 	if debug {
 		log.Println("Running containerd server...")
-	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Printf("Error: Cannot start containerd: %s\n", err)
-		serverStarted <- false
 	}
 	configFile := filepath.Join(homeDir, ".containerd", "config.toml")
 	cmd := exec.Command("containerd", "--config", configFile)
