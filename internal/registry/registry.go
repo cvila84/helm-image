@@ -51,24 +51,23 @@ func ConsoleCredentials(host string) func(string) (string, string, error) {
 					fmt.Printf("\nError: %v\n", err)
 				}
 			}()
-			creds := cache[host]
-			if len((*creds).login) == 0 {
+			if len((*cache[host]).login) == 0 {
 				fmt.Printf("Please authenticate on %s\n", host)
 				fmt.Printf("Login: ")
-				(*creds).login, err = prompt(true)
+				(*cache[host]).login, err = prompt(true)
 				if err != nil {
 					return "", "", err
 				}
-				if len((*creds).password) == 0 {
+				if len((*cache[host]).password) == 0 {
 					fmt.Printf("Password: ")
-					(*creds).password, err = prompt(false)
+					(*cache[host]).password, err = prompt(false)
 					if err != nil {
 						return "", "", err
 					}
 					fmt.Print("\n")
 				}
 			}
-			return (*creds).login, (*creds).password, err
+			return (*cache[host]).login, (*cache[host]).password, err
 		}
 	}
 	return nil

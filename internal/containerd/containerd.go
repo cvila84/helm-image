@@ -378,9 +378,7 @@ func closeClient(client *containerd.Client) {
 }
 
 func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, debug bool) error {
-	if debug {
-		log.Printf("Pulling image %s...\n", imageName)
-	}
+	fmt.Printf("Pulling image %s...\n", imageName)
 
 	imageRef, err := reference.ParseNormalizedNamed(imageName)
 	if err != nil {
@@ -440,19 +438,15 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials regis
 	if err != nil {
 		return err
 	}
-	if debug {
-		log.Printf("Successfully pulled %s image\n", image.Name())
-	}
+	fmt.Printf("Successfully pulled %s image\n", image.Name())
 	return nil
 }
 
 func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string, debug bool) error {
-	if debug {
-		if len(imageName) > 0 {
-			log.Printf("Saving image %s in %s...\n", imageName, fileName)
-		} else {
-			log.Printf("Saving all images in %s...\n", fileName)
-		}
+	if len(imageName) > 0 {
+		fmt.Printf("Saving image %s in %s...\n", imageName, fileName)
+	} else {
+		fmt.Printf("Saving all images in %s...\n", fileName)
 	}
 	var exportOpts []archive.ExportOpt
 	p, err := platforms.Parse("linux")

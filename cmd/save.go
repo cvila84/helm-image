@@ -114,10 +114,10 @@ func (s *saveCmd) save() error {
 		return err
 	}
 	ctx := namespaces.WithNamespace(context.Background(), "default")
+	for _, auth := range s.auths {
+		registry.AddAuthRegistry(auth)
+	}
 	for _, image := range images {
-		for _, auth := range s.auths {
-			registry.AddAuthRegistry(auth)
-		}
 		excluded := false
 		for _, excludedImage := range s.excludes {
 			if image == excludedImage {
