@@ -2,20 +2,26 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/gemalto/helm-image/internal/containerd"
+	"github.com/gemalto/helm-image/internal/registry"
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	cliValues "helm.sh/helm/v3/pkg/cli/values"
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
 type saveCmd struct {
 	chartName  string
 	namespace  string
+	excludes   []string
+	auths      []string
 	valuesOpts cliValues.Options
 	debug      bool
 }
@@ -24,10 +30,11 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	s := &saveCmd{}
 
 	cmd := &cobra.Command{
-		Use:   "save",
-		Short: "save in a file docker images referenced in a chart",
-		Long:  "save in a file docker images referenced in a chart",
-		Args:  cobra.MinimumNArgs(1),
+		Use:          "save",
+		Short:        "save in a file docker images referenced in a chart",
+		Long:         "save in a file docker images referenced in a chart",
+		Args:         cobra.MinimumNArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s.chartName = args[0]
 			return s.save()
@@ -36,6 +43,8 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 
 	flags := cmd.Flags()
 
+	flags.StringSliceVarP(&s.auths, "auth", "a", []string{}, "specify private registries which need authentication during pull")
+	flags.StringSliceVarP(&s.excludes, "exclude", "x", []string{}, "specify docker images to be excluded from pulls")
 	flags.StringSliceVarP(&s.valuesOpts.ValueFiles, "values", "f", []string{}, "specify values in a YAML file or a URL (can specify multiple)")
 	flags.StringArrayVar(&s.valuesOpts.Values, "set", []string{}, "set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
@@ -58,10 +67,6 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func defaultCredentials(host string) func(string) (string, string, error) {
-	return nil
-}
-
 func (s *saveCmd) save() error {
 	l := &listCmd{
 		chartName:  s.chartName,
@@ -76,7 +81,7 @@ func (s *saveCmd) save() error {
 	// TODO manage remote charts
 	chart, err := loader.Load(l.chartName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	err = containerd.CreateContainerdDirectories()
 	if err != nil {
@@ -85,23 +90,68 @@ func (s *saveCmd) save() error {
 	serverStarted := make(chan bool)
 	serverKill := make(chan bool)
 	serverKilled := make(chan bool)
-	go containerd.Server(serverStarted, serverKill, serverKilled)
+	go containerd.Server(serverStarted, serverKill, serverKilled, l.debug)
 	if !<-serverStarted {
-		os.Exit(1)
+		return fmt.Errorf("cannot start containerd server")
 	}
-	client, err := containerd.Client()
+	interrupt := make(chan os.Signal)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-interrupt
+		if l.debug {
+			log.Println("Sending signal to containerd...")
+		}
+		serverKill <- true
+		<-serverKilled
+	}()
+	client, err := containerd.Client(l.debug)
 	if err != nil {
-		log.Println(err)
+		if l.debug {
+			log.Println("Sending signal to containerd...")
+		}
+		serverKill <- true
+		<-serverKilled
+		return err
 	}
 	ctx := namespaces.WithNamespace(context.Background(), "default")
 	for _, image := range images {
-		err = containerd.PullImage(ctx, client, defaultCredentials, image)
-		if err != nil {
-			return err
+		for _, auth := range s.auths {
+			registry.AddAuthRegistry(auth)
+		}
+		excluded := false
+		for _, excludedImage := range s.excludes {
+			if image == excludedImage {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
+			err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
+			//if err != nil {
+			//	err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
+			if err != nil {
+				if l.debug {
+					log.Println("Sending signal to containerd...")
+				}
+				serverKill <- true
+				<-serverKilled
+				return err
+			}
+			//}
 		}
 	}
-	err = containerd.SaveImage(ctx, client, "", chart.Name()+".tar")
-	log.Println("Sending signal to containerd...")
+	err = containerd.SaveImage(ctx, client, "", chart.Name()+".tar", l.debug)
+	if err != nil {
+		if l.debug {
+			log.Println("Sending signal to containerd...")
+		}
+		serverKill <- true
+		<-serverKilled
+		return err
+	}
+	if l.debug {
+		log.Println("Sending signal to containerd...")
+	}
 	serverKill <- true
 	<-serverKilled
 	return nil

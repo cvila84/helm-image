@@ -12,6 +12,7 @@ import (
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
 	"github.com/docker/distribution/reference"
+	"github.com/gemalto/helm-image/internal/registry"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"log"
@@ -25,9 +26,67 @@ import (
 	"time"
 )
 
-var fileLog *log.Logger
+var containerdConfig = `
+version = 2
+plugin_dir = ""
+disabled_plugins = [ "io.containerd.grpc.v1.cri" ]
+required_plugins = []
+oom_score = 0
 
-type credentials func(host string) func(string) (string, string, error)
+[grpc]
+  address = "\\\\.\\pipe\\containerd-containerd"
+  tcp_address = ""
+  tcp_tls_cert = ""
+  tcp_tls_key = ""
+  uid = 0
+  gid = 0
+  max_recv_message_size = 16777216
+  max_send_message_size = 16777216
+
+[ttrpc]
+  address = ""
+  uid = 0
+  gid = 0
+
+[debug]
+  address = ""
+  uid = 0
+  gid = 0
+  level = ""
+
+[metrics]
+  address = ""
+  grpc_histogram = false
+
+[cgroup]
+  path = ""
+
+[timeouts]
+  "io.containerd.timeout.shim.cleanup" = "5s"
+  "io.containerd.timeout.shim.load" = "5s"
+  "io.containerd.timeout.shim.shutdown" = "3s"
+  "io.containerd.timeout.task.state" = "2s"
+
+[plugins]
+  [plugins."io.containerd.gc.v1.scheduler"]
+    pause_threshold = 0.02
+    deletion_threshold = 0
+    mutation_threshold = 100
+    schedule_delay = "0s"
+    startup_delay = "100ms"
+  [plugins."io.containerd.internal.v1.opt"]
+    path = "C:\\Users\\cvila\\.containerd\\root\\opt"
+  [plugins."io.containerd.internal.v1.restart"]
+    interval = "10s"
+  [plugins."io.containerd.metadata.v1.bolt"]
+    content_sharing_policy = "shared"
+  [plugins."io.containerd.runtime.v2.task"]
+    platforms = ["windows/amd64", "linux/amd64"]
+  [plugins."io.containerd.service.v1.diff-service"]
+    default = ["windows", "windows-lcow"]
+`
+
+var fileLog *log.Logger
 
 type jobs struct {
 	name     string
@@ -191,7 +250,7 @@ func manageActive(ctx context.Context, cs content.Store, parts *imageParts) map[
 	activeSeen := map[string]struct{}{}
 	active, err := cs.ListStatuses(ctx, "")
 	if err != nil {
-		log.Printf("WARNING: failed to get content statuses: %s\n", err)
+		log.Printf("Warning: failed to get content statuses: %s\n", err)
 		return activeSeen
 	}
 	// update status of active entries
@@ -219,7 +278,7 @@ func manageInactive(ctx context.Context, cs content.Store, start time.Time, ongo
 			info, err := cs.Info(ctx, j.Digest)
 			if err != nil {
 				if !errdefs.IsNotFound(err) {
-					log.Printf("WARNING: failed to get content info: %s\n", err)
+					log.Printf("Warning: failed to get content info: %s\n", err)
 					return err
 				} else {
 					parts.set(key, "waiting", imagePart{})
@@ -245,7 +304,7 @@ func completeInactive(ctx context.Context, ongoing *jobs, parts *imageParts) {
 		status, ok := parts.get(key)
 		if ok {
 			if status.status != "done" && status.status != "exists" {
-				fileLog.Printf("--- %+v\n", status)
+				fileLog.Printf("status: %+v\n", status)
 				if status.total == 0 {
 					status.offset = 1
 					status.total = 1
@@ -318,12 +377,14 @@ func closeClient(client *containerd.Client) {
 	}
 }
 
-func PullImage(ctx context.Context, client *containerd.Client, credentials credentials, imageName string) error {
-	log.Printf("Pulling image %s...\n", imageName)
+func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, debug bool) error {
+	if debug {
+		log.Printf("Pulling image %s...\n", imageName)
+	}
 
 	imageRef, err := reference.ParseNormalizedNamed(imageName)
 	if err != nil {
-		return fmt.Errorf("reference.ParseNormalizedNamed: %w", err)
+		return err
 	}
 	if reference.IsNameOnly(imageRef) {
 		imageRef = reference.TagNameOnly(imageRef)
@@ -377,17 +438,21 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials crede
 	stopProgress()
 	<-progress
 	if err != nil {
-		return fmt.Errorf("client.Pull: %w", err)
+		return err
 	}
-	log.Printf("Successfully pulled %s image\n", image.Name())
+	if debug {
+		log.Printf("Successfully pulled %s image\n", image.Name())
+	}
 	return nil
 }
 
-func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string) error {
-	if len(imageName) > 0 {
-		log.Printf("Saving image %s in %s...\n", imageName, fileName)
-	} else {
-		log.Printf("Saving all images in %s...\n", fileName)
+func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string, debug bool) error {
+	if debug {
+		if len(imageName) > 0 {
+			log.Printf("Saving image %s in %s...\n", imageName, fileName)
+		} else {
+			log.Printf("Saving all images in %s...\n", fileName)
+		}
 	}
 	var exportOpts []archive.ExportOpt
 	p, err := platforms.Parse("linux")
@@ -398,7 +463,7 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 	} else {
 		imgs, err := client.ListImages(ctx, "")
 		if err != nil {
-			return fmt.Errorf("Client.ListImages: %w", err)
+			return err
 		}
 		for _, img := range imgs {
 			images = append(images, img.Name())
@@ -410,17 +475,19 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 	}
 	f, err := os.Create(fileName)
 	if err != nil {
-		return fmt.Errorf("os.Create: %w", err)
+		return err
 	}
 	defer f.Close()
 	err = client.Export(ctx, f, exportOpts...)
 	if err != nil {
-		return fmt.Errorf("client.Export: %w", err)
+		return err
 	}
-	if len(imageName) > 0 {
-		log.Printf("Successfully saved image %s in %s\n", imageName, fileName)
-	} else {
-		log.Printf("Successfully saved all images in %s\n", fileName)
+	if debug {
+		if len(imageName) > 0 {
+			log.Printf("Successfully saved image %s in %s\n", imageName, fileName)
+		} else {
+			log.Printf("Successfully saved all images in %s\n", fileName)
+		}
 	}
 	return nil
 }
@@ -428,7 +495,7 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 //func ListImages(ctx context.Context, client *containerd.Client) error {
 //	imgs, err := client.ListImages(ctx, "")
 //	if err != nil {
-//		return fmt.Errorf("client.List: %w", err)
+//		return err
 //	}
 //	for _, img := range imgs {
 //		fmt.Printf("%s\n", img.Name())
@@ -436,42 +503,45 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 //	return nil
 //}
 
-func Client() (*containerd.Client, error) {
+func Client(debug bool) (*containerd.Client, error) {
 	clientLogFile, err := os.OpenFile("container.log", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("cannot create container.log file: %s\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	defer clientLogFile.Close()
 	fileLog = log.New(clientLogFile, "container", log.LstdFlags)
-	log.Println("Creating containerd client...")
+	if debug {
+		log.Println("Creating containerd client...")
+	}
 	var client *containerd.Client
 	defer closeClient(client)
 	for i := 0; i < 8; i++ {
 		client, err = containerd.New("\\\\.\\pipe\\containerd-containerd", containerd.WithTimeout(1*time.Second))
 		if client != nil {
 			break
-		} else if err != nil && i > 0 {
-			log.Println("containerd.New: server unavailable, retrying...")
+		} else if err != nil && i > 0 && debug {
+			log.Println("containerd server unavailable, retrying...")
 		}
 	}
 	if client == nil {
-		return nil, fmt.Errorf("containerd.New: server unavailable: %w", err)
+		return nil, fmt.Errorf("containerd server unavailable: %w", err)
 	}
 	return client, nil
 }
 
-func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan bool) {
+func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan bool, debug bool) {
 	serverLogFile, err := os.OpenFile("containerd.log", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("cannot create containerd.log file: %s\n", err)
+		log.Printf("Error: cannot create containerd.log file: %s\n", err)
 		serverStarted <- false
 	}
 	defer serverLogFile.Close()
-	log.Println("Running containerd server...")
+	if debug {
+		log.Println("Running containerd server...")
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Printf("ERROR: Cannot start containerd: %s\n", err)
+		log.Printf("Error: Cannot start containerd: %s\n", err)
 		serverStarted <- false
 	}
 	configFile := filepath.Join(homeDir, ".containerd", "config.toml")
@@ -480,22 +550,26 @@ func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan boo
 	cmd.Stderr = serverLogFile
 	err = cmd.Start()
 	if err != nil {
-		log.Printf("ERROR: Cannot start containerd: %s\n", err)
+		log.Printf("Error: Cannot start containerd: %s\n", err)
 		serverStarted <- false
 	}
 	if cmd.Process == nil {
-		log.Println("ERROR: Cannot start containerd")
+		log.Println("Error: Cannot start containerd")
 		serverStarted <- false
 	}
 	// Wait a bit to make sure client can connect to server
 	time.Sleep(3 * time.Second)
-	log.Println("Started containerd server")
+	if debug {
+		log.Println("Started containerd server")
+	}
 	serverStarted <- true
 	<-serverKill
-	log.Println("Stopping containerd server...")
+	if debug {
+		log.Println("Stopping containerd server...")
+	}
 	_ = cmd.Process.Signal(syscall.SIGKILL)
 	// Wait a bit to make sure signal is processed before client process is gone
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	serverKilled <- true
 }
 
@@ -519,6 +593,24 @@ func CreateContainerdDirectories() error {
 	stateDir := filepath.Join(baseDir, "state")
 	if _, err := os.Stat(stateDir); os.IsNotExist(err) {
 		if err = os.Mkdir(stateDir, os.ModePerm); err != nil {
+			return err
+		}
+	}
+	configFile := filepath.Join(baseDir, "config.toml")
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		config, err := os.OpenFile(configFile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		defer config.Close()
+		if err != nil {
+			return err
+		}
+		//root = "C:\\Users\\cvila\\.containerd\\root"
+		//state = "C:\\Users\\cvila\\.containerd\\state"
+		rootDir := strings.ReplaceAll(filepath.Join(baseDir, "root"), "\\", "\\\\")
+		stateDir := strings.ReplaceAll(filepath.Join(baseDir, "state"), "\\", "\\\\")
+		_, err = config.WriteString("root = \"" + rootDir + "\"\n")
+		_, err = config.WriteString("state = \"" + stateDir + "\"")
+		_, err = config.WriteString(containerdConfig)
+		if err != nil {
 			return err
 		}
 	}

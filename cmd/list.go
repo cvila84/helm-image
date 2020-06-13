@@ -1,32 +1,73 @@
 package cmd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/gemalto/helm-image/internal/helm"
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/cli/values"
 	cliValues "helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/getter"
 	"io"
 	"io/ioutil"
 	v1 "k8s.io/api/apps/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
-type dependency struct {
-	Name   string
-	Weight int
+type imagesList struct {
+	images map[string]struct{}
+	mu     sync.Mutex
+}
+
+func newImagesList() *imagesList {
+	return &imagesList{
+		images: map[string]struct{}{},
+	}
+}
+
+func (l *imagesList) add(image string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.images[image] = struct{}{}
+}
+
+func (l *imagesList) get() []string {
+	var images []string
+	for image, _ := range l.images {
+		images = append(images, image)
+	}
+	return images
+}
+
+type taskErrors struct {
+	errors []error
+	mu     sync.Mutex
+}
+
+func newTaskErrors() *taskErrors {
+	return &taskErrors{
+		errors: []error{},
+	}
+}
+
+func (e *taskErrors) add(error error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.errors = append(e.errors, error)
+}
+
+func (e *taskErrors) get() []error {
+	return e.errors
+}
+
+type processChartInfo struct {
+	images    *imagesList
+	chartName string
+	valuesSet []string
 }
 
 type listCmd struct {
@@ -36,19 +77,15 @@ type listCmd struct {
 	debug      bool
 }
 
-var httpProvider = getter.Provider{
-	Schemes: []string{"http", "https"},
-	New:     getter.NewHTTPGetter,
-}
-
 func newListCmd(out io.Writer) *cobra.Command {
 	l := &listCmd{}
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "list docker images referenced in a chart",
-		Long:  "list docker images referenced in a chart",
-		Args:  cobra.MinimumNArgs(1),
+		Use:          "list",
+		Short:        "list docker images referenced in a chart",
+		Long:         "list docker images referenced in a chart",
+		Args:         cobra.MinimumNArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			l.chartName = args[0]
 			images, err := l.list()
@@ -104,115 +141,7 @@ func removeTempDir(tempDir string) {
 	}
 }
 
-func template(manifestDir string, namespace string, chartPath string, valueFiles []string, valuesSet []string, valuesSetString []string, valuesSetFile []string, debug bool) error {
-	// Prepare parameters...
-	var myargs = []string{"template", chartPath, "--disable-openapi-validation", "--output-dir", manifestDir, "--namespace", namespace}
-
-	for _, v := range valuesSet {
-		myargs = append(myargs, "--set")
-		myargs = append(myargs, v)
-	}
-	for _, v := range valuesSetString {
-		myargs = append(myargs, "--set-string")
-		myargs = append(myargs, v)
-	}
-	for _, v := range valuesSetFile {
-		myargs = append(myargs, "--set-file")
-		myargs = append(myargs, v)
-	}
-	for _, v := range valueFiles {
-		myargs = append(myargs, "-f")
-		myargs = append(myargs, v)
-	}
-
-	// Run the upgrade command
-	if debug {
-		log.Printf("Running helm %s\n", myargs)
-	}
-	cmd := exec.Command("helm", myargs...)
-	cmdOutput := &bytes.Buffer{}
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = cmdOutput
-	err := cmd.Run()
-	output := cmdOutput.Bytes()
-	if debug {
-		log.Printf("Helm returned: \n%s\n", string(output))
-	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func mergeValues(chart *chart.Chart, valueOpts *values.Options) (chartutil.Values, error) {
-	chartValues, err := chartutil.CoalesceValues(chart, chart.Values)
-	if err != nil {
-		return nil, fmt.Errorf("merging values with umbrella chart: %w", err)
-	}
-	providedValues, err := valueOpts.MergeValues(getter.Providers{httpProvider})
-	if err != nil {
-		return nil, fmt.Errorf("merging values from CLI flags: %w", err)
-	}
-	return mergeMaps(chartValues, providedValues), nil
-}
-
-func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
-	out := make(map[string]interface{}, len(a))
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		if v, ok := v.(map[string]interface{}); ok {
-			if bv, ok := out[k]; ok {
-				if bv, ok := bv.(map[string]interface{}); ok {
-					out[k] = mergeMaps(bv, v)
-					continue
-				}
-			}
-		}
-		out[k] = v
-	}
-	return out
-}
-
-func getDependencies(chart *chart.Chart, values *chartutil.Values) ([]dependency, error) {
-	// Build the list of all dependencies, and their key attributes
-	dependencies := make([]dependency, len(chart.Metadata.Dependencies))
-	for i, req := range chart.Metadata.Dependencies {
-		// dependency name and alias
-		if req.Alias == "" {
-			dependencies[i].Name = req.Name
-		} else {
-			dependencies[i].Name = req.Alias
-		}
-
-		// Get weight of the dependency. If no weight is specified, setting it to 0
-		weightJson, err := values.PathValue(dependencies[i].Name + ".weight")
-		if err != nil {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
-		}
-		// Depending on the configuration of the json parser, integer can be returned either as Float64 or json.Number
-		weight := 0
-		if reflect.TypeOf(weightJson).String() == "json.Number" {
-			w, err := weightJson.(json.Number).Int64()
-			if err != nil {
-				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
-			}
-			weight = int(w)
-		} else if reflect.TypeOf(weightJson).String() == "float64" {
-			weight = int(weightJson.(float64))
-		} else {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be an integer", dependencies[i].Name)
-		}
-		if weight < 0 {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be positive or equal to zero", dependencies[i].Name)
-		}
-		dependencies[i].Weight = weight
-	}
-	return dependencies, nil
-}
-
-func addContainerImages(images map[string]struct{}, path string, debug bool) error {
+func addContainerImages(images *imagesList, path string, debug bool) error {
 	if debug {
 		log.Printf("Parsing %s...\n", path)
 	}
@@ -233,10 +162,10 @@ func addContainerImages(images map[string]struct{}, path string, debug bool) err
 			log.Printf("Searching for images in deployment %s...\n", path)
 		}
 		for _, container := range deployment.Spec.Template.Spec.Containers {
-			images[container.Image] = struct{}{}
+			images.add(container.Image)
 		}
 		for _, container := range deployment.Spec.Template.Spec.InitContainers {
-			images[container.Image] = struct{}{}
+			images.add(container.Image)
 		}
 	}
 	statefulSet, ok := manifest.(*v1.StatefulSet)
@@ -245,16 +174,16 @@ func addContainerImages(images map[string]struct{}, path string, debug bool) err
 			log.Printf("Searching for images in statefulset %s...\n", path)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.Containers {
-			images[container.Image] = struct{}{}
+			images.add(container.Image)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.InitContainers {
-			images[container.Image] = struct{}{}
+			images.add(container.Image)
 		}
 	}
 	return nil
 }
 
-func parseManifests(images map[string]struct{}, path string, chartName string, debug bool) error {
+func parseManifests(images *imagesList, path string, chartName string, debug bool) error {
 	err := filepath.Walk(filepath.Join(path, chartName), func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, ".yaml") {
 			err = addContainerImages(images, path, debug)
@@ -270,43 +199,77 @@ func parseManifests(images map[string]struct{}, path string, chartName string, d
 	return nil
 }
 
-func (l *listCmd) processChart(images map[string]struct{}, chartName string, valuesSet []string) error {
+func (l *listCmd) processChart(images *imagesList, chartName string, valuesSet []string) error {
 	tempDir, err := ioutil.TempDir("", "helm-image-")
 	if err != nil {
 		return fmt.Errorf("creating temporary directory to write rendered manifests: %w", err)
 	}
 	defer removeTempDir(tempDir)
-	err = template(tempDir, l.namespace, l.chartName, l.valuesOpts.ValueFiles, valuesSet, l.valuesOpts.StringValues, l.valuesOpts.FileValues, l.debug)
+	err = helm.Template(tempDir, l.namespace, l.chartName, l.valuesOpts.ValueFiles, valuesSet, l.valuesOpts.StringValues, l.valuesOpts.FileValues, l.debug)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	err = parseManifests(images, tempDir, chartName, l.debug)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	return nil
 }
 
 func (l *listCmd) list() ([]string, error) {
-	images := map[string]struct{}{}
+	images := newImagesList()
 
+	if l.debug {
+		log.Printf("Loading chart %s...\n", l.chartName)
+	}
 	// TODO manage remote charts
 	chart, err := loader.Load(l.chartName)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	mergedValues, err := mergeValues(chart, &l.valuesOpts)
-	if err != nil {
-		panic(err)
+	if l.debug {
+		log.Println("Merging values...")
 	}
-	deps, err := getDependencies(chart, &mergedValues)
+	mergedValues, err := helm.MergeValues(chart, &l.valuesOpts)
 	if err != nil {
-		panic(err)
+		return nil, err
+	}
+	if l.debug {
+		log.Println("Loading dependencies...")
+	}
+	deps, err := helm.GetDependencies(chart, &mergedValues)
+	if err != nil {
+		return nil, err
 	}
 
 	start := time.Now()
 
 	if len(deps) > 0 {
+		var wg sync.WaitGroup
+		tasks := make(chan processChartInfo)
+		taskErrors := newTaskErrors()
+		for i := 0; i < 4; i++ {
+			wg.Add(1)
+			go func(tasks chan processChartInfo, wg *sync.WaitGroup) {
+				defer wg.Done()
+				for task := range tasks {
+					if l.debug {
+						log.Printf("Starting task for %s with %v\n", task.chartName, task.valuesSet)
+					}
+					err := l.processChart(task.images, task.chartName, task.valuesSet)
+					if err != nil {
+						taskErrors.add(err)
+						if l.debug {
+							log.Printf("End with error of task for %s with %v\n", task.chartName, task.valuesSet)
+						}
+						break
+					}
+					if l.debug {
+						log.Printf("End without error of task for %s with %v\n", task.chartName, task.valuesSet)
+					}
+				}
+			}(tasks, &wg)
+		}
 		maxWeight := 0
 		for _, dep := range deps {
 			if dep.Weight > maxWeight {
@@ -324,11 +287,21 @@ func (l *listCmd) list() ([]string, error) {
 				var valuesSet []string
 				valuesSet = append(valuesSet, l.valuesOpts.Values...)
 				valuesSet = append(valuesSet, depValuesSet)
-				err = l.processChart(images, chart.Name(), valuesSet)
-				if err != nil {
-					return nil, err
+				tasks <- processChartInfo{
+					images:    images,
+					chartName: chart.Name(),
+					valuesSet: valuesSet,
 				}
 			}
+		}
+		close(tasks)
+		wg.Wait()
+		errors := taskErrors.get()
+		if len(errors) > 0 {
+			for _, err := range errors {
+				log.Printf("Error: %s\n", err)
+			}
+			return nil, fmt.Errorf("processing one of the sub-chart")
 		}
 	} else {
 		err = l.processChart(images, chart.Name(), l.valuesOpts.Values)
@@ -342,10 +315,5 @@ func (l *listCmd) list() ([]string, error) {
 		log.Printf("Chart parsed in %s\n", spent)
 	}
 
-	var ret []string
-	for image, _ := range images {
-		ret = append(ret, image)
-	}
-
-	return ret, nil
+	return images.get(), nil
 }
