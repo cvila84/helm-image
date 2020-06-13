@@ -1,7 +1,7 @@
 name: "image"
 version: "1.0.0-rc.2"
-usage: "upgrade sub-charts from an umbrella chart with dependency orders"
-description: "Helm plugin for upgrading sub-charts from umbrella chart with dependency orders"
+usage: "get docker images from a chart"
+description: "Helm plugin for getting docker images from a chart"
 command: "$HELM_PLUGIN_DIR/bin/helm-image"
 hooks:
   install: "cd $HELM_PLUGIN_DIR; scripts/install_plugin.sh"
