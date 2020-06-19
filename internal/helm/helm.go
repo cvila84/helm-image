@@ -90,23 +90,27 @@ func GetDependencies(chart *chart.Chart, values *chartutil.Values) ([]Dependency
 		// Get weight of the dependency. If no weight is specified, setting it to 0
 		weightJson, err := values.PathValue(dependencies[i].Name + ".weight")
 		if err != nil {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
+			if _, ok := err.(chartutil.ErrNoValue); !ok {
+				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
+			}
 		}
 		// Depending on the configuration of the json parser, integer can be returned either as Float64 or json.Number
 		weight := 0
-		if reflect.TypeOf(weightJson).String() == "json.Number" {
-			w, err := weightJson.(json.Number).Int64()
-			if err != nil {
-				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
+		if weightJson != nil {
+			if reflect.TypeOf(weightJson).String() == "json.Number" {
+				w, err := weightJson.(json.Number).Int64()
+				if err != nil {
+					return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].Name, err)
+				}
+				weight = int(w)
+			} else if reflect.TypeOf(weightJson).String() == "float64" {
+				weight = int(weightJson.(float64))
+			} else {
+				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be an integer", dependencies[i].Name)
 			}
-			weight = int(w)
-		} else if reflect.TypeOf(weightJson).String() == "float64" {
-			weight = int(weightJson.(float64))
-		} else {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be an integer", dependencies[i].Name)
-		}
-		if weight < 0 {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be positive or equal to zero", dependencies[i].Name)
+			if weight < 0 {
+				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be positive or equal to zero", dependencies[i].Name)
+			}
 		}
 		dependencies[i].Weight = weight
 	}

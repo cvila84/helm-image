@@ -161,7 +161,7 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 	deployment, ok := manifest.(*v1.Deployment)
 	if ok {
 		if debug {
-			log.Printf("Searching for images in deployment %s...\n", path)
+			log.Printf("Searching for deployment images in %s...\n", path)
 		}
 		for _, container := range deployment.Spec.Template.Spec.Containers {
 			images.add(container.Image)
@@ -173,7 +173,7 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 	statefulSet, ok := manifest.(*v1.StatefulSet)
 	if ok {
 		if debug {
-			log.Printf("Searching for images in statefulset %s...\n", path)
+			log.Printf("Searching for statefulset images in %s...\n", path)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.Containers {
 			images.add(container.Image)

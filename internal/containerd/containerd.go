@@ -491,9 +491,9 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 		return err
 	}
 	if len(imageName) > 0 {
-		log.Printf("Successfully saved image %s in %s\n", imageName, fileName)
+		fmt.Printf("Successfully saved image %s in %s\n", imageName, fileName)
 	} else {
-		log.Printf("Successfully saved all images in %s\n", fileName)
+		fmt.Printf("Successfully saved all images in %s\n", fileName)
 	}
 	return nil
 }
