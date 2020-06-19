@@ -24,6 +24,7 @@ type saveCmd struct {
 	auths      []string
 	valuesOpts cliValues.Options
 	debug      bool
+	verbose    bool
 }
 
 func newSaveCmd(out io.Writer) *cobra.Command {
@@ -49,6 +50,7 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	flags.StringArrayVar(&s.valuesOpts.Values, "set", []string{}, "set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
+	flags.BoolVar(&s.verbose, "verbose", false, "enable verbose output")
 
 	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
 	helmDebug := os.Getenv("HELM_DEBUG")
@@ -127,8 +129,6 @@ func (s *saveCmd) save() error {
 		}
 		if !excluded {
 			err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
-			//if err != nil {
-			//	err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
 			if err != nil {
 				if l.debug {
 					log.Println("Sending signal to containerd...")
@@ -140,7 +140,7 @@ func (s *saveCmd) save() error {
 			//}
 		}
 	}
-	err = containerd.SaveImage(ctx, client, "", chart.Name()+".tar", l.debug)
+	err = containerd.SaveImage(ctx, client, "", chart.Name()+".tar")
 	if err != nil {
 		if l.debug {
 			log.Println("Sending signal to containerd...")

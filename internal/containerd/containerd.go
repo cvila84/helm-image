@@ -378,7 +378,7 @@ func closeClient(client *containerd.Client) {
 	}
 }
 
-func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, debug bool) error {
+func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, verbose bool) error {
 	fmt.Printf("Pulling image %s...\n", imageName)
 
 	imageRef, err := reference.ParseNormalizedNamed(imageName)
@@ -388,14 +388,6 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials regis
 	if reference.IsNameOnly(imageRef) {
 		imageRef = reference.TagNameOnly(imageRef)
 	}
-
-	ongoing := newJobs(imageName)
-	pctx, stopProgress := context.WithCancel(ctx)
-	progress := make(chan struct{})
-	go func() {
-		showProgress(pctx, ongoing, client.ContentStore())
-		close(progress)
-	}()
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
 		Tracker: docker.NewInMemoryTracker(),
@@ -421,29 +413,50 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials regis
 		},
 	})
 
-	handler := images.HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
-		if desc.MediaType != images.MediaTypeDockerSchema1Manifest {
-			ongoing.add(desc)
-		}
-		return nil, nil
-	})
+	if verbose {
+		ongoing := newJobs(imageName)
+		pctx, stopProgress := context.WithCancel(ctx)
+		progress := make(chan struct{})
+		go func() {
+			showProgress(pctx, ongoing, client.ContentStore())
+			close(progress)
+		}()
 
-	image, err := client.Pull(ctx, imageRef.String(), []containerd.RemoteOpt{
-		containerd.WithPlatform("linux"),
-		containerd.WithResolver(resolver),
-		containerd.WithImageHandler(handler),
-		containerd.WithSchema1Conversion,
-	}...)
-	stopProgress()
-	<-progress
-	if err != nil {
-		return err
+		handler := images.HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
+			if desc.MediaType != images.MediaTypeDockerSchema1Manifest {
+				ongoing.add(desc)
+			}
+			return nil, nil
+		})
+
+		image, err := client.Pull(ctx, imageRef.String(), []containerd.RemoteOpt{
+			containerd.WithPlatform("linux"),
+			containerd.WithResolver(resolver),
+			containerd.WithImageHandler(handler),
+			containerd.WithSchema1Conversion,
+		}...)
+		stopProgress()
+		<-progress
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully pulled %s image\n", image.Name())
+	} else {
+		image, err := client.Pull(ctx, imageRef.String(), []containerd.RemoteOpt{
+			containerd.WithPlatform("linux"),
+			containerd.WithResolver(resolver),
+			containerd.WithSchema1Conversion,
+		}...)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Successfully pulled %s image\n", image.Name())
 	}
-	fmt.Printf("Successfully pulled %s image\n", image.Name())
+
 	return nil
 }
 
-func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string, debug bool) error {
+func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string) error {
 	if len(imageName) > 0 {
 		fmt.Printf("Saving image %s in %s...\n", imageName, fileName)
 	} else {
@@ -477,12 +490,10 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 	if err != nil {
 		return err
 	}
-	if debug {
-		if len(imageName) > 0 {
-			log.Printf("Successfully saved image %s in %s\n", imageName, fileName)
-		} else {
-			log.Printf("Successfully saved all images in %s\n", fileName)
-		}
+	if len(imageName) > 0 {
+		log.Printf("Successfully saved image %s in %s\n", imageName, fileName)
+	} else {
+		log.Printf("Successfully saved all images in %s\n", fileName)
 	}
 	return nil
 }
