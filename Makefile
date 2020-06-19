@@ -16,7 +16,7 @@ dist_linux:
 	GOOS=linux GOARCH=amd64 go get -t -v ./...
 	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY_LINUX) -ldflags $(LDFLAGS) main.go
 	curl https://github.com/containerd/containerd/releases/download/v1.3.4/containerd-1.3.4.linux-amd64.tar.gz -o containerd.tar.gz
-    tar -czvf containerd.tar.gz
+    tar -czvf containerd.tar.gz .
 	tar -czvf $(DIST)/$(TAR_LINUX) bin README.md LICENSE plugin.yaml
 
 .PHONY: dist_windows
@@ -25,5 +25,5 @@ dist_windows:
 	GOOS=windows GOARCH=amd64 go get -t -v ./...
 	GOOS=windows GOARCH=amd64 go build -o bin/$(BINARY_WINDOWS) -ldflags $(LDFLAGS) main.go
 	curl https://github.com/cvila84/containerd/releases/download/v1.3.4/containerd-1.3.4.windows-amd64.tar.gz -o containerd.tar.gz
-    tar -czvf containerd.tar.gz
+    tar -czvf containerd.tar.gz .
 	tar -czvf $(DIST)/${TAR_WINDOWS} bin README.md LICENSE plugin.yaml
