@@ -514,7 +514,7 @@ func Client(debug bool) (*containerd.Client, error) {
 	}
 	var client *containerd.Client
 	defer closeClient(client)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 12; i++ {
 		client, err = containerd.New("\\\\.\\pipe\\containerd-containerd", containerd.WithTimeout(1*time.Second))
 		if client != nil {
 			break
@@ -543,8 +543,11 @@ func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan boo
 	if debug {
 		log.Println("Running containerd server...")
 	}
-	configFile := filepath.Join(homeDir, ".containerd", "config.toml")
-	cmd := exec.Command("containerd", "--config", configFile)
+	execPath, err := os.Executable()
+	if err != nil {
+		log.Printf("Error: cannot start containerd: %s\n", err)
+	}
+	cmd := exec.Command(filepath.Join(filepath.Dir(execPath), "containerd"), "--config", filepath.Join(homeDir, ".containerd", "config.toml"))
 	cmd.Stdout = serverLogFile
 	cmd.Stderr = serverLogFile
 	err = cmd.Start()
