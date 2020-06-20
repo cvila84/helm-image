@@ -8,7 +8,8 @@ import (
 	cliValues "helm.sh/helm/v3/pkg/cli/values"
 	"io"
 	"io/ioutil"
-	v1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"log"
 	"os"
@@ -158,7 +159,7 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 		}
 		return nil
 	}
-	deployment, ok := manifest.(*v1.Deployment)
+	deployment, ok := manifest.(*appsv1.Deployment)
 	if ok {
 		if debug {
 			log.Printf("Searching for deployment images in %s...\n", path)
@@ -170,7 +171,7 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 			images.add(container.Image)
 		}
 	}
-	statefulSet, ok := manifest.(*v1.StatefulSet)
+	statefulSet, ok := manifest.(*appsv1.StatefulSet)
 	if ok {
 		if debug {
 			log.Printf("Searching for statefulset images in %s...\n", path)
@@ -179,6 +180,18 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 			images.add(container.Image)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.InitContainers {
+			images.add(container.Image)
+		}
+	}
+	jobs, ok := manifest.(*batchv1.Job)
+	if ok {
+		if debug {
+			log.Printf("Searching for job images in %s...\n", path)
+		}
+		for _, container := range jobs.Spec.Template.Spec.Containers {
+			images.add(container.Image)
+		}
+		for _, container := range jobs.Spec.Template.Spec.InitContainers {
 			images.add(container.Image)
 		}
 	}

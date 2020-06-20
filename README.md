@@ -31,14 +31,16 @@ Saving all images in prometheus-operator.tar...
 Successfully saved all images in prometheus-operator.tar
 ```
 
+You can specify values just like standard helm commands with `--values`, `--set`, `--set-string` and `--set-file` flags
+
 ## How does it work ?
 
-To list the images, a dry-run helm installation is actually performed, then all generated manifests are parsed in a temporary directory to find all container templates for all deployments and statefulsets
+- To list the images, a dry-run helm installation is actually performed, then all generated manifests are parsed in a temporary directory to find all container templates for all deployments, statefulsets and jobs following Kubernetes APIs (`k8s.io/apis/apps/v1` and `k8s.io/apis/batch/v1`)  
 
-To save the images, a containerd server is launched in background, with a client pulling all the images, then exporting them in a file
+  helm-image support the `weight` attribute introduced in [helm-spray](https://github.com/thalesgroup/helm-spray) to run up to 4 dry-run installations in parallel from the lowest to the highest weight of sub-charts (helm is mono-threaded)
+
+- To save the images, a containerd server is launched in background, with a client pulling all the images, then exporting them in a file
 
 ## Known bugs and limitations
 
 This plugin has only been tested on Windows so far
-
- 
