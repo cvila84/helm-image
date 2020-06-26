@@ -378,15 +378,23 @@ func closeClient(client *containerd.Client) {
 	}
 }
 
-func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, verbose bool) error {
-	fmt.Printf("Pulling image %s...\n", imageName)
-
+func imageRef(imageName string) (reference.Named, error) {
 	imageRef, err := reference.ParseNormalizedNamed(imageName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if reference.IsNameOnly(imageRef) {
 		imageRef = reference.TagNameOnly(imageRef)
+	}
+	return imageRef, nil
+}
+
+func PullImage(ctx context.Context, client *containerd.Client, credentials registry.Credentials, imageName string, verbose bool) error {
+	fmt.Printf("Pulling image %s...\n", imageName)
+
+	imageRef, err := imageRef(imageName)
+	if err != nil {
+		return err
 	}
 
 	resolver := docker.NewResolver(docker.ResolverOptions{
@@ -456,30 +464,24 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials regis
 	return nil
 }
 
-func SaveImage(ctx context.Context, client *containerd.Client, imageName string, fileName string) error {
-	if len(imageName) > 0 {
-		fmt.Printf("Saving image %s in %s...\n", imageName, fileName)
-	} else {
-		fmt.Printf("Saving all images in %s...\n", fileName)
+func SaveImages(ctx context.Context, client *containerd.Client, images []string, fileName string) error {
+	if len(images) == 0 {
+		return fmt.Errorf("no images to save")
 	}
+	fmt.Printf("Saving images in %s...\n", fileName)
 	var exportOpts []archive.ExportOpt
 	p, err := platforms.Parse("linux")
 	exportOpts = append(exportOpts, archive.WithPlatform(platforms.Ordered(p)))
-	var images []string
-	if len(imageName) > 0 {
-		images = append(images, imageName)
-	} else {
-		imgs, err := client.ListImages(ctx, "")
-		if err != nil {
-			return err
-		}
-		for _, img := range imgs {
-			images = append(images, img.Name())
-		}
+	if err != nil {
+		return err
 	}
 	is := client.ImageService()
 	for _, img := range images {
-		exportOpts = append(exportOpts, archive.WithImage(is, img))
+		imageRef, err := imageRef(img)
+		if err != nil {
+			return err
+		}
+		exportOpts = append(exportOpts, archive.WithImage(is, imageRef.String()))
 	}
 	f, err := os.Create(fileName)
 	if err != nil {
@@ -490,24 +492,20 @@ func SaveImage(ctx context.Context, client *containerd.Client, imageName string,
 	if err != nil {
 		return err
 	}
-	if len(imageName) > 0 {
-		fmt.Printf("Successfully saved image %s in %s\n", imageName, fileName)
-	} else {
-		fmt.Printf("Successfully saved all images in %s\n", fileName)
-	}
+	fmt.Printf("Successfully saved all images in %s\n", fileName)
 	return nil
 }
 
-//func ListImages(ctx context.Context, client *containerd.Client) error {
-//	imgs, err := client.ListImages(ctx, "")
-//	if err != nil {
-//		return err
-//	}
-//	for _, img := range imgs {
-//		fmt.Printf("%s\n", img.Name())
-//	}
-//	return nil
-//}
+func ListImages(ctx context.Context, client *containerd.Client) error {
+	imgs, err := client.ListImages(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, img := range imgs {
+		fmt.Printf("%s\n", img.Name())
+	}
+	return nil
+}
 
 func Client(debug bool) (*containerd.Client, error) {
 	homeDir, err := os.UserHomeDir()
@@ -540,6 +538,10 @@ func Client(debug bool) (*containerd.Client, error) {
 }
 
 func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan bool, debug bool) {
+	err := CreateContainerdDirectories()
+	if err != nil {
+		log.Printf("Error: cannot create containerd directories: %s\n", err)
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Printf("Error: cannot create containerd.log file: %s\n", err)
@@ -584,6 +586,16 @@ func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan boo
 	// Wait a bit to make sure signal is processed before client process is gone
 	time.Sleep(3 * time.Second)
 	serverKilled <- true
+}
+
+func DeleteContainerdDirectories() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	baseDir := filepath.Join(homeDir, ".containerd")
+	err = os.RemoveAll(baseDir)
+	return err
 }
 
 func CreateContainerdDirectories() error {

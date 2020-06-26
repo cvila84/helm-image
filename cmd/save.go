@@ -50,7 +50,7 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	flags.StringArrayVar(&s.valuesOpts.Values, "set", []string{}, "set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
-	flags.BoolVar(&s.verbose, "verbose", false, "enable verbose output")
+	flags.BoolVarP(&s.verbose, "verbose", "v", false, "enable verbose output")
 
 	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
 	helmDebug := os.Getenv("HELM_DEBUG")
@@ -77,15 +77,24 @@ func (s *saveCmd) save() error {
 		debug:      s.debug,
 	}
 	images, err := l.list()
+	includedImagesMap := map[string]struct{}{}
+	for _, image := range images {
+		includedImagesMap[image] = struct{}{}
+		for _, excludedImage := range s.excludes {
+			if image == excludedImage {
+				delete(includedImagesMap, image)
+			}
+		}
+	}
+	var includedImages []string
+	for image := range includedImagesMap {
+		includedImages = append(includedImages, image)
+	}
 	if err != nil {
 		return err
 	}
 	// TODO manage remote charts
 	chart, err := loader.Load(l.chartName)
-	if err != nil {
-		return err
-	}
-	err = containerd.CreateContainerdDirectories()
 	if err != nil {
 		return err
 	}
@@ -101,7 +110,7 @@ func (s *saveCmd) save() error {
 	go func() {
 		<-interrupt
 		if l.debug {
-			log.Println("Sending signal to containerd...")
+			log.Println("Sending interrupt signal to containerd server...")
 		}
 		serverKill <- true
 		<-serverKilled
@@ -109,7 +118,7 @@ func (s *saveCmd) save() error {
 	client, err := containerd.Client(l.debug)
 	if err != nil {
 		if l.debug {
-			log.Println("Sending signal to containerd...")
+			log.Println("Sending interrupt signal to containerd server...")
 		}
 		serverKill <- true
 		<-serverKilled
@@ -119,38 +128,28 @@ func (s *saveCmd) save() error {
 	for _, auth := range s.auths {
 		registry.AddAuthRegistry(auth)
 	}
-	for _, image := range images {
-		excluded := false
-		for _, excludedImage := range s.excludes {
-			if image == excludedImage {
-				excluded = true
-				break
+	for _, image := range includedImages {
+		err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
+		if err != nil {
+			if l.debug {
+				log.Println("Sending interrupt signal to containerd server...")
 			}
-		}
-		if !excluded {
-			err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
-			if err != nil {
-				if l.debug {
-					log.Println("Sending signal to containerd...")
-				}
-				serverKill <- true
-				<-serverKilled
-				return err
-			}
-			//}
+			serverKill <- true
+			<-serverKilled
+			return err
 		}
 	}
-	err = containerd.SaveImage(ctx, client, "", chart.Name()+".tar")
+	err = containerd.SaveImages(ctx, client, includedImages, chart.Name()+".tar")
 	if err != nil {
 		if l.debug {
-			log.Println("Sending signal to containerd...")
+			log.Println("Sending interrupt signal to containerd server...")
 		}
 		serverKill <- true
 		<-serverKilled
 		return err
 	}
 	if l.debug {
-		log.Println("Sending signal to containerd...")
+		log.Println("Sending interrupt signal to containerd server...")
 	}
 	serverKill <- true
 	<-serverKilled
