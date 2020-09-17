@@ -22,8 +22,8 @@ else
     wget -q "${url}" -O "releases/v${version}.tar.gz"
 fi
 tar xzf "releases/v${version}.tar.gz" -C "releases/v${version}"
-mv "releases/v${version}/helm-image" "bin/helm-image" || \
-    mv "releases/v${version}/helm-image.exe" "bin/helm-image"
+mv "releases/v${version}/bin/helm-image" "bin/helm-image" || \
+    mv "releases/v${version}/bin/helm-image.exe" "bin/helm-image"
 mv "releases/v${version}/plugin.yaml" .
 mv "releases/v${version}/README.md" .
 mv "releases/v${version}/LICENSE" .
