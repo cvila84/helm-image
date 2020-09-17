@@ -75,6 +75,7 @@ type listCmd struct {
 	chartName  string
 	namespace  string
 	valuesOpts cliValues.Options
+	helmPath   string
 	verbose    bool
 	debug      bool
 }
@@ -108,6 +109,9 @@ func newListCmd(out io.Writer) *cobra.Command {
 	flags.StringArrayVar(&l.valuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&l.valuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	flags.BoolVarP(&l.verbose, "verbose", "v", false, "enable verbose output")
+
+	// When called through helm, helm path is transmitted through the HELM_BIN envvar
+	l.helmPath = os.Getenv("HELM_BIN")
 
 	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
 	helmDebug := os.Getenv("HELM_DEBUG")
@@ -220,7 +224,7 @@ func (l *listCmd) processChart(images *imagesList, chartName string, valuesSet [
 		return fmt.Errorf("creating temporary directory to write rendered manifests: %w", err)
 	}
 	defer removeTempDir(tempDir)
-	err = helm.Template(tempDir, l.namespace, l.chartName, l.valuesOpts.ValueFiles, valuesSet, l.valuesOpts.StringValues, l.valuesOpts.FileValues, l.debug)
+	err = helm.Template(l.helmPath, tempDir, l.namespace, l.chartName, l.valuesOpts.ValueFiles, valuesSet, l.valuesOpts.StringValues, l.valuesOpts.FileValues, l.debug)
 	if err != nil {
 		return err
 	}

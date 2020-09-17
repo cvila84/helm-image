@@ -1,5 +1,5 @@
 name: "image"
-version: 1.0.1
+version: 1.0.2
 usage: "get docker images from a chart"
 description: "Helm plugin for getting docker images from a chart"
 command: "$HELM_PLUGIN_DIR/bin/helm-image"

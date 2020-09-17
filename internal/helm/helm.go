@@ -24,7 +24,7 @@ var httpProvider = getter.Provider{
 	New:     getter.NewHTTPGetter,
 }
 
-func Template(manifestDir string, namespace string, chartPath string, valueFiles []string, valuesSet []string, valuesSetString []string, valuesSetFile []string, debug bool) error {
+func Template(helmPath string, manifestDir string, namespace string, chartPath string, valueFiles []string, valuesSet []string, valuesSetString []string, valuesSetFile []string, debug bool) error {
 	// Prepare parameters...
 	var myargs = []string{"template", chartPath, "--disable-openapi-validation", "--output-dir", manifestDir, "--namespace", namespace}
 
@@ -47,9 +47,9 @@ func Template(manifestDir string, namespace string, chartPath string, valueFiles
 
 	// Run the upgrade command
 	if debug {
-		log.Printf("Running helm %s\n", myargs)
+		log.Printf("Running %s %v\n", helmPath, myargs)
 	}
-	cmd := exec.Command("helm", myargs...)
+	cmd := exec.Command(helmPath, myargs...)
 	cmdOutput := &bytes.Buffer{}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = cmdOutput
