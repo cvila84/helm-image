@@ -14,6 +14,7 @@ func NewRootCmd(out io.Writer, args []string) *cobra.Command {
 	cmd.AddCommand(
 		newListCmd(out),
 		newSaveCmd(out),
+		newPullCmd(out),
 		newCacheCmd(out),
 	)
 	return cmd

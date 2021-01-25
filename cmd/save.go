@@ -23,8 +23,9 @@ type saveCmd struct {
 	excludes   []string
 	auths      []string
 	valuesOpts cliValues.Options
-	debug      bool
+	helmPath   string
 	verbose    bool
+	debug      bool
 }
 
 func newSaveCmd(out io.Writer) *cobra.Command {
@@ -52,6 +53,9 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	flags.StringArrayVar(&s.valuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	flags.BoolVarP(&s.verbose, "verbose", "v", false, "enable verbose output")
 
+	// When called through helm, helm path is transmitted through the HELM_BIN envvar
+	s.helmPath = os.Getenv("HELM_BIN")
+
 	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
 	helmDebug := os.Getenv("HELM_DEBUG")
 	if helmDebug == "1" || strings.EqualFold(helmDebug, "true") || strings.EqualFold(helmDebug, "on") {
@@ -74,6 +78,7 @@ func (s *saveCmd) save() error {
 		chartName:  s.chartName,
 		namespace:  s.namespace,
 		valuesOpts: s.valuesOpts,
+		helmPath:   s.helmPath,
 		debug:      s.debug,
 	}
 	images, err := l.list()

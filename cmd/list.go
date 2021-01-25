@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -267,7 +268,7 @@ func (l *listCmd) list() ([]string, error) {
 		var wg sync.WaitGroup
 		tasks := make(chan processChartInfo)
 		taskErrors := newTaskErrors()
-		for i := 0; i < 4; i++ {
+		for i := 0; i < runtime.NumCPU(); i++ {
 			wg.Add(1)
 			go func(tasks chan processChartInfo, wg *sync.WaitGroup) {
 				defer wg.Done()

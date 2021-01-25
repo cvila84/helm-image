@@ -507,7 +507,7 @@ func ListImages(ctx context.Context, client *containerd.Client) error {
 	return nil
 }
 
-func Client(debug bool) (*containerd.Client, error) {
+func ClientWithAddress(address string, debug bool) (*containerd.Client, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -524,7 +524,7 @@ func Client(debug bool) (*containerd.Client, error) {
 	var client *containerd.Client
 	defer closeClient(client)
 	for i := 0; i < 12; i++ {
-		client, err = containerd.New("\\\\.\\pipe\\containerd-containerd", containerd.WithTimeout(1*time.Second))
+		client, err = containerd.New(address, containerd.WithTimeout(1*time.Second))
 		if client != nil {
 			break
 		} else if err != nil && i > 0 && debug {
@@ -535,6 +535,10 @@ func Client(debug bool) (*containerd.Client, error) {
 		return nil, fmt.Errorf("containerd server unavailable: %w", err)
 	}
 	return client, nil
+}
+
+func Client(debug bool) (*containerd.Client, error) {
+	return ClientWithAddress("\\\\.\\pipe\\containerd-containerd", debug)
 }
 
 func Server(serverStarted chan bool, serverKill chan bool, serverKilled chan bool, debug bool) {
