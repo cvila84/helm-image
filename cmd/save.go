@@ -80,6 +80,7 @@ func (s *saveCmd) save() error {
 		valuesOpts: s.valuesOpts,
 		helmPath:   s.helmPath,
 		debug:      s.debug,
+		verbose:    s.verbose,
 	}
 	images, err := l.list()
 	includedImagesMap := map[string]struct{}{}

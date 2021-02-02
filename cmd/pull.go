@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/gemalto/helm-image/internal/docker"
 	"github.com/spf13/cobra"
 	cliValues "helm.sh/helm/v3/pkg/cli/values"
@@ -72,6 +73,7 @@ func (p *pullCmd) pull() error {
 		valuesOpts: p.valuesOpts,
 		helmPath:   p.helmPath,
 		debug:      p.debug,
+		verbose:    p.verbose,
 	}
 	images, err := l.list()
 	includedImagesMap := map[string]struct{}{}
@@ -99,6 +101,9 @@ func (p *pullCmd) pull() error {
 	//	registry.AddAuthRegistry(auth)
 	//}
 	for _, image := range includedImages {
+		if p.verbose {
+			fmt.Printf("Pulling %s...\n", image)
+		}
 		err = docker.Pull(image, l.debug)
 		//err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)
 		if err != nil {

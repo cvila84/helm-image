@@ -149,7 +149,7 @@ func removeTempDir(tempDir string) {
 	}
 }
 
-func addContainerImages(images *imagesList, path string, debug bool) error {
+func addContainerImages(images *imagesList, path string, verbose bool, debug bool) error {
 	if debug {
 		log.Printf("Parsing %s...\n", path)
 	}
@@ -170,9 +170,15 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 			log.Printf("Searching for deployment images in %s...\n", path)
 		}
 		for _, container := range deployment.Spec.Template.Spec.Containers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 		for _, container := range deployment.Spec.Template.Spec.InitContainers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 	}
@@ -182,9 +188,15 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 			log.Printf("Searching for statefulset images in %s...\n", path)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.Containers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.InitContainers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 	}
@@ -194,19 +206,25 @@ func addContainerImages(images *imagesList, path string, debug bool) error {
 			log.Printf("Searching for job images in %s...\n", path)
 		}
 		for _, container := range jobs.Spec.Template.Spec.Containers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 		for _, container := range jobs.Spec.Template.Spec.InitContainers {
+			if verbose {
+				fmt.Printf("Found %s\n", container.Image)
+			}
 			images.add(container.Image)
 		}
 	}
 	return nil
 }
 
-func parseManifests(images *imagesList, path string, chartName string, debug bool) error {
+func parseManifests(images *imagesList, path string, chartName string, verbose bool, debug bool) error {
 	err := filepath.Walk(filepath.Join(path, chartName), func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, ".yaml") {
-			err = addContainerImages(images, path, debug)
+			err = addContainerImages(images, path, verbose, debug)
 			if err != nil {
 				return err
 			}
@@ -225,11 +243,14 @@ func (l *listCmd) processChart(images *imagesList, chartName string, valuesSet [
 		return fmt.Errorf("creating temporary directory to write rendered manifests: %w", err)
 	}
 	defer removeTempDir(tempDir)
+	if l.verbose {
+		fmt.Printf("Rendering %s with %v...\n", l.chartName, valuesSet)
+	}
 	err = helm.Template(l.helmPath, tempDir, l.namespace, l.chartName, l.valuesOpts.ValueFiles, valuesSet, l.valuesOpts.StringValues, l.valuesOpts.FileValues, l.debug)
 	if err != nil {
 		return err
 	}
-	err = parseManifests(images, tempDir, chartName, l.debug)
+	err = parseManifests(images, tempDir, chartName, l.verbose, l.debug)
 	if err != nil {
 		return err
 	}
@@ -239,8 +260,8 @@ func (l *listCmd) processChart(images *imagesList, chartName string, valuesSet [
 func (l *listCmd) list() ([]string, error) {
 	images := newImagesList()
 
-	if l.debug {
-		log.Printf("Loading chart %s...\n", l.chartName)
+	if l.verbose {
+		fmt.Printf("Loading chart %s...\n", l.chartName)
 	}
 	// TODO manage remote charts
 	chart, err := loader.Load(l.chartName)
