@@ -1,5 +1,8 @@
 # Release Notes
 
+## Version 1.0.5 - 04/06/2021
+* Support cron jobs [#7](Fix https://github.com/cvila84/helm-image/issues/7)
+
 ## Version 1.0.4 - 02/02/2021
 * Added verbose traces (as chart rendering process may be long for big umbrella charts)
 
