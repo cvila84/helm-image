@@ -19,6 +19,7 @@ import (
 
 type saveCmd struct {
 	chartName  string
+	outputFile string
 	namespace  string
 	excludes   []string
 	auths      []string
@@ -52,6 +53,7 @@ func newSaveCmd(out io.Writer) *cobra.Command {
 	flags.StringArrayVar(&s.valuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	flags.StringArrayVar(&s.valuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	flags.BoolVarP(&s.verbose, "verbose", "v", false, "enable verbose output")
+	flags.StringVarP(&s.outputFile, "output", "o", "", "image file name")
 
 	// When called through helm, helm path is transmitted through the HELM_BIN envvar
 	s.helmPath = os.Getenv("HELM_BIN")
@@ -145,7 +147,10 @@ func (s *saveCmd) save() error {
 			return err
 		}
 	}
-	err = containerd.SaveImages(ctx, client, includedImages, chart.Name()+".tar")
+	if len(s.outputFile) == 0 {
+		s.outputFile = chart.Name() + ".tar"
+	}
+	err = containerd.SaveImages(ctx, client, includedImages, s.outputFile)
 	if err != nil {
 		if l.debug {
 			log.Println("Sending interrupt signal to containerd server...")
