@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68 // indirect
 	github.com/containerd/console v0.0.0-20180822173158-c12b1e7919c1
-	github.com/containerd/containerd v1.4.3
+	github.com/containerd/containerd v1.4.8
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
