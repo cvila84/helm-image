@@ -46,6 +46,14 @@ func (l *imagesList) get() []string {
 	return images
 }
 
+func (l *imagesList) contains(image string) bool {
+	if _, ok := l.images[image]; ok {
+		return true
+	} else {
+		return false
+	}
+}
+
 type taskErrors struct {
 	errors []error
 	mu     sync.Mutex
@@ -171,16 +179,24 @@ func addContainerImages(images *imagesList, path string, verbose bool, debug boo
 			log.Printf("Searching for deployment images in %s...\n", path)
 		}
 		for _, container := range deployment.Spec.Template.Spec.Containers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 		for _, container := range deployment.Spec.Template.Spec.InitContainers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 	}
 	statefulSet, ok := manifest.(*appsv1.StatefulSet)
@@ -189,16 +205,24 @@ func addContainerImages(images *imagesList, path string, verbose bool, debug boo
 			log.Printf("Searching for statefulset images in %s...\n", path)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.Containers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 		for _, container := range statefulSet.Spec.Template.Spec.InitContainers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 	}
 	jobs, ok := manifest.(*batchv1.Job)
@@ -207,16 +231,24 @@ func addContainerImages(images *imagesList, path string, verbose bool, debug boo
 			log.Printf("Searching for job images in %s...\n", path)
 		}
 		for _, container := range jobs.Spec.Template.Spec.Containers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 		for _, container := range jobs.Spec.Template.Spec.InitContainers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 	}
 	cronJobs, ok := manifest.(*batchv1beta1.CronJob)
@@ -225,16 +257,24 @@ func addContainerImages(images *imagesList, path string, verbose bool, debug boo
 			log.Printf("Searching for cron job images in %s...\n", path)
 		}
 		for _, container := range cronJobs.Spec.JobTemplate.Spec.Template.Spec.Containers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 		for _, container := range cronJobs.Spec.JobTemplate.Spec.Template.Spec.InitContainers {
-			if verbose {
-				fmt.Printf("Found %s\n", container.Image)
+			if !images.contains(container.Image) {
+				if verbose {
+					fmt.Printf("Found %s\n", container.Image)
+				}
+				images.add(container.Image)
+			} else if debug {
+				fmt.Printf("Ignoring %s\n", container.Image)
 			}
-			images.add(container.Image)
 		}
 	}
 	return nil

@@ -30,8 +30,11 @@ func prompt(show bool) (string, error) {
 	return string(line), nil
 }
 
-func AddAuthRegistry(host string) {
-	cache[host] = &registryCredentials{}
+func AddAuthRegistry(host string, login string, password string) {
+	cache[host] = &registryCredentials{
+		login:    login,
+		password: password,
+	}
 }
 
 func ConsoleCredentials(host string) func(string) (string, string, error) {

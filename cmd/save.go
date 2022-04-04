@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/gemalto/helm-image/internal/containerd"
+	"github.com/gemalto/helm-image/internal/credentials"
 	"github.com/gemalto/helm-image/internal/registry"
 	"github.com/spf13/cobra"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -134,7 +135,11 @@ func (s *saveCmd) save() error {
 	}
 	ctx := namespaces.WithNamespace(context.Background(), "default")
 	for _, auth := range s.auths {
-		registry.AddAuthRegistry(auth)
+		login, password, err := credentials.GetAuth(auth)
+		if err != nil && l.debug {
+			log.Printf("Warning: cannot get authentication information: %s\n", err)
+		}
+		registry.AddAuthRegistry(auth, login, password)
 	}
 	for _, image := range includedImages {
 		err = containerd.PullImage(ctx, client, registry.ConsoleCredentials, image, l.debug)

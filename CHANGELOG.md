@@ -1,5 +1,9 @@
 # Release Notes
 
+## Version 1.0.7 - 04/04/2022
+* Rely on credential manager (only windows) or docker configuration to get repository authentication information
+* Bump to containerd 1.6.2
+
 ## Version 1.0.6 - 08/11/2021
 * Added -o flag to save command (set the output file name)
 

@@ -373,7 +373,7 @@ func closeClient(client *containerd.Client) {
 	if client != nil {
 		err := client.Close()
 		if err != nil {
-			log.Println("WARNING: Cannot close containerd client")
+			log.Println("Warning: Cannot close containerd client")
 		}
 	}
 }
@@ -401,7 +401,7 @@ func PullImage(ctx context.Context, client *containerd.Client, credentials regis
 		Tracker: docker.NewInMemoryTracker(),
 		Hosts: func(host string) ([]docker.RegistryHost, error) {
 			dockerHeaders := make(http.Header)
-			dockerHeaders.Set("User-Agent", "containerd/1.3.4")
+			dockerHeaders.Set("User-Agent", "containerd/1.6.2")
 			dockerAuthorizer := docker.NewDockerAuthorizer(
 				docker.WithAuthClient(http.DefaultClient),
 				docker.WithAuthHeader(dockerHeaders),
