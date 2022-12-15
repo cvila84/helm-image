@@ -1,5 +1,8 @@
 # Release Notes
 
+## Version 1.0.8 - 12/15/2022
+* Updated build dependencies
+
 ## Version 1.0.7 - 04/04/2022
 * Rely on credential manager (only windows) or docker configuration to get repository authentication information
 * Bump to containerd 1.6.2
