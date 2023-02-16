@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/containerd/console v1.0.3
-	github.com/containerd/containerd v1.6.12
+	github.com/containerd/containerd v1.6.18
 	github.com/danieljoos/wincred v1.1.2
 	github.com/docker/distribution v2.8.1+incompatible
 	github.com/opencontainers/go-digest v1.0.0
@@ -19,10 +19,10 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
-	github.com/Microsoft/hcsshim v0.9.5 // indirect
+	github.com/Microsoft/hcsshim v0.9.6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/containerd/cgroups v1.0.3 // indirect
+	github.com/containerd/cgroups v1.0.4 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/containerd/fifo v1.0.0 // indirect
 	github.com/containerd/ttrpc v1.1.0 // indirect
