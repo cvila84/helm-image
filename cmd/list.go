@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"log"
 	"os"
@@ -251,7 +250,7 @@ func addContainerImages(images *imagesList, path string, verbose bool, debug boo
 			}
 		}
 	}
-	cronJobs, ok := manifest.(*batchv1beta1.CronJob)
+	cronJobs, ok := manifest.(*batchv1.CronJob)
 	if ok {
 		if debug {
 			log.Printf("Searching for cron job images in %s...\n", path)

@@ -1,5 +1,9 @@
 # Release Notes
 
+## Version 1.0.9 - 07/07/2023
+* Use CronJob v1 final API specifications
+* Updated build dependencies
+
 ## Version 1.0.8 - 12/15/2022
 * Updated build dependencies
 
